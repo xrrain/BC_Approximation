@@ -43,7 +43,7 @@ for index = 1:graph_num
     p_nodes = ones(1,num_nodes)./num_nodes;
     seed = rng;
     target_node = get_targetnodes(G,frac,sample_size,all_nodes, p_nodes);
-    compared_node = get_targetnodes(G, frac, ceil(all_pairs),all_nodes, p_nodes);
+    compared_node = get_targetnodes(G, frac, all_pairs, p_nodes);
     % change the possiblity accoring to the selected note
     for iter = 1:iter_number
         p_pre = zeros(num_nodes);
@@ -73,16 +73,15 @@ for index = 1:graph_num
     tods(index) = tod;
     tods_c(index) = tod_c;
     todd = sum(normalized_wbc(target_node))/sum(B);
-    todd_c = sum(normalized_wbc(compared_node))/sum(B_C);
+    todd_c = sum(normalize_wbc(compared_node)/sum(B_C);
     todds(index) = todd;
     todds_c(index) = todd_c;
 end
 
 figure
 subplot(1,3,1)
-p = plot(1:graph_num, tocs, 1:graph_num, tocs_c);
+p = plot(1:graph_num, tocs, 1:graph_num, tocs_c,lable = 'toc');
 subplot(1,3,2)
-p = plot(1:graph_num, tods, 1:graph_num, tods_c);
-subplot(1,3,3)
-p = plot(1:graph_num, todds, 1:graph_num, todds_c);
+p = plot(1:graph_num, tods, 1:graph_num, tods_c, lable = 'tod');
+subplot(1,
 legend()
