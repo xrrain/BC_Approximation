@@ -6,12 +6,12 @@ function target_node = get_targetnodes(G,frac, sample_size,all_nodes, p_nodes)
         src = sample_one(all_nodes, p_nodes);
         des = sample_one(all_nodes, p_nodes);
         src_pos = find(sample_pairs(:,1) == src);
-        des_pos = find(sample_pairs(:,1) == des);
+        des_pos = find(sample_pairs(:,2) == des);
         while src == des || ~isempty(intersect(src_pos, des_pos))
             src = sample_one(all_nodes, p_nodes);
             des = sample_one(all_nodes, p_nodes);
             src_pos = find(sample_pairs(:,1) == src);
-            des_pos = find(sample_pairs(:,1) == des);
+            des_pos = find(sample_pairs(:,2) == des);
         end
         sample_pairs(i,1) = src;
         sample_pairs(i,2) = des;
@@ -38,7 +38,7 @@ function target_node = get_targetnodes(G,frac, sample_size,all_nodes, p_nodes)
     if isempty(node_unique)
         return
     end
-    [count,~] = histcounts(hyedges(:),[node_unique,inf]);
+    [count,records] = histcounts(hyedges(:),[node_unique,inf]);
     freq = [node_unique',count'];
     % find the first number node account for xx% in all freq 
     [~,I] = sort(freq(:,2), 'descend');
