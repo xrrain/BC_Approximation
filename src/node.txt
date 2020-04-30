@@ -1,0 +1,16 @@
+Use 8 layer network
+Use graphs with 10K nodes
+Use <= 200 beacons, start with 50
+Pick 10K node pairs, train until error basically stable
+Out of the 10K training pairs, pick 1K pairs with the highest errors
+Compute quality of each potential beacon using equation
+Pick top 5 beacons to add to set of beacons
+Retrain network
+
+Check the generalzation error.  If too high, then decrease number of network layers.
+
+
+Sources of error in previous version
+1.  Network too small / shallow (this might be true)
+2.  Bad beacon selection (I think this is most likely)
+3.  Poor network training
