@@ -131,7 +131,10 @@ class ReDistanceTool():
         if sampler not in samplers:
             raise Exception("Not supported sampler")
         hyedges = []
-        for (src, des) in worst_paris:
+        nodes = list(self.graph.nodes())
+        for (src_id, des_id) in worst_paris:
+            src = nodes[src_id]
+            des = nodes[des_id]
             try:
                 paths = nx.all_shortest_paths(self.graph, source=src, target=des)
                 paths = [list(path) for path in paths]
@@ -179,7 +182,7 @@ class ReDistanceTool():
                 # for hyedge in hyedges:
                 #     for node in hyedge:
                 #         bc_estimation[node]  += step
-        score_array = np.array([scores[list(self.graph.nodes())[id]] for id in range(self.graph.order())])
+        score_array = np.array([scores[nodes[id]] for id in range(self.graph.order())])
         order1 = np.argsort(-score_array)
         return order1.tolist()[:beacons_num]
     
@@ -191,14 +194,63 @@ class ReDistanceTool():
         now_num = len(self.beacons)
         print("add {} new beacons".format(now_num - orign_num))
     
-    def train(self, num_epochs=50, batch_size = 128, verbose=True):
+    def probability_distribution(data, name, bins=50):
+        figure, (ax0, ax1) = plt.subplots(2, 1)
+        ax0.hist(data, bins, facecolor='blue', edgecolor='black', alpha=0.75, weights=np.ones_like(data) / len(data))
+        ax0.set_title(name + ' p_distributation')
+        ax1.hist(data, bins, density=True, facecolor='yellowgreen', edgecolor='black', alpha=0.75, cumulative=True)
+        ax1.set_title(name + ' sum_distribution')
+        plt.show()
+        figure.savefig(name + '.png', dpi=600, format='png')
+        
+        
+    def draw(self, history, estimation, y_test):
+        errors = {'max_error': [], 'mean_error': [], 'max_relative_error': [], 'mean_relative_error': []}
+        name = self.graph_name+ "_"+ str(len(self.beacons))
+        figure = plt.figure(name)
+        plt.title("{}: loss".format(name))
+        train_pl = plt.plot(history['train'], label='train_loss')
+        val_pl = plt.plot(history['val'], label='val_loss')
+        plt.xlabel('Epochs')
+        plt.ylabel('loss')
+        plt.legend()
+        # write_result(bt, G_info_list[i], end - start)
+        figure.savefig("result_loss/{}.png".format(name), dpi=600, format='png')
+        plt.show()
+#         torch.save({
+#             'model_weights': net.state_dict(),
+#             'history': history
+#         }, './models/{}_model.pkl'.format(name))
+        estimation = np.round(np.squeeze(estimation))
+        error_abs = np.abs(estimation - y_test)
+        error_relative = np.abs(estimation - y_test) / y_test
+        mask = np.isfinite(error_relative)
+        error_relative = error_relative[mask]
+
+        probability_distribution(error_relative, name + '_relative_error', 100)
+        max_error = np.max(error_abs)
+        mean_error = np.mean(error_abs)
+        max_relative_error = np.max(error_relative)
+        mean_relative_error = np.mean(error_relative)
+        errors['max_error'].append(max_error)
+        errors['mean_error'].append(mean_error)
+        errors['max_relative_error'].append(max_relative_error)
+        errors['mean_relative_error'].append(mean_relative_error)
+        estimation = estimation.tolist()
+        result_file = name + "_estimation.csv"
+        with open(result_file, 'w+') as f:
+            for idx, dist in enumerate(estimation):
+                f.writelines(str(dist) + '\t' + str(y_test[idx]) + '\n')
+
+    def train(self, num_epochs=200, batch_size = 128, verbose=True):
         epoch_max_loss = 1e-2
         epoch_max_diff_loss = 1e-4
+
+        criterion = nn.MSELoss()
 
         while(len(self.beacons) <= self.max_beacons_num):
             # prepare data loader
             model =  LinearRegression(len(self.beacons)*2)
-            criterion = nn.MSELoss()
             optimizer = optim.Adam(model.parameters(), lr=0.001)
             model.to(self.device)
             self.prepare_train_set()
@@ -214,7 +266,7 @@ class ReDistanceTool():
             val_targets = torch.from_numpy(val_value).type(torch.float)
             train_dataset = TensorDataset(train_inputs, train_targets)
             dataloader = DataLoader(train_dataset, batch_size, shuffle=True)
-            # history = {'train': [], 'val': []}
+            history = {'train': [], 'val': []}
             since = time.time()
             best_train_loss = np.inf
             best_val_loss = np.inf
@@ -246,8 +298,17 @@ class ReDistanceTool():
                         optimizer.step()
                     # statistics
                     running_loss += loss.item() * x.size(0)
-
+                ## val
+                model.eval()
+                val_inputs = val_inputs.to(self.device)
+                pred_v = model(val_inputs)
+                pred_v = pred_v.squeeze()
+                pred_s_v = pred_v.cpu().detach().numpy()
+                val_targets_s = val_targets.numpy()
+                final_val_loss = np.mean(np.power(pred_s_v - val_targets_s, 2))
+                history["val"].append(final_val_loss)
                 epoch_loss = running_loss / num
+                history["train"].append(epoch_loss)
                 print('train Loss: {:.4f}'.format(epoch_loss))
                 if epoch_loss <= best_train_loss:
                     best_train_loss = epoch_loss
@@ -262,6 +323,7 @@ class ReDistanceTool():
                 # deep copy the model
 
                 print()
+
             model.eval()
             train_inputs = train_inputs.to(self.device)
             pred = model(train_inputs)
@@ -269,15 +331,15 @@ class ReDistanceTool():
             pred_s = pred.cpu().detach().numpy()
             train_targets_s = train_targets.numpy()
             final_train_loss = np.mean(np.power(pred_s - train_targets_s, 2))
-            max_pair_s = np.argsort(-(np.power(pred_s - train_targets_s, 2)))[-10:].tolist()
-            
+            max_pair_s = np.argsort(-(np.power(pred_s - train_targets_s, 2)))[-20:].tolist()
+
             node_color = ['r'] * self.graph.order()
             for pair in max_pair_s:
                 src = self.src_set[pair]
                 des = self.des_set[pair]
                 node_color[src] = 'b'
                 node_color[des] = 'b'
-            nx.draw_networkx_nodes(self.graph, pos=nx.spring_layout(self.graph), node_color= node_color)
+            nx.draw_networkx_nodes(self.graph, node_size=5, node_shape="o",edge_size=1, with_labels=True, pos=nx.spring_layout(self.graph), node_color= node_color)
             plt.show()
             time_elapsed = time.time() - since
             print('Training complete in {:.0f}m {:.0f}s'.format(
@@ -288,13 +350,14 @@ class ReDistanceTool():
             pred_s_v = pred_v.cpu().detach().numpy()
             val_targets_s = val_targets.numpy()
             final_val_loss = np.mean(np.power(pred_s_v - val_targets_s, 2))
+            self.draw(history, pred_s_v, val_targets_s)
             print('Best train loss: {:4f} for # {} beacons'.format(best_train_loss, len(self.beacons)))
             print('Final train loss: {:4f} for # {} beacons'.format(final_train_loss, len(self.beacons)))
             print('Final val loss: {:4f} for # {} beacons'.format(final_val_loss, len(self.beacons)))
             start = time.time()
             new_src = [self.src_set[index] for index in max_pair_s]
             new_des = [self.des_set[index] for index in max_pair_s]
-            self.add_beacons(zip(new_src, new_des), beacons_num = 5)
+            self.add_beacons(zip(new_src, new_des))
             print("add beacons cost %.2f s" % (time.time() - start))
             # load best model weights
             # model.load_state_dict(best_model_wts)
